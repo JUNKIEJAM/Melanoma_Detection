@@ -1,0 +1,2 @@
+virtualenv python_3_env_00
+.\python_3_env_00\Scripts\activate
