@@ -32,8 +32,6 @@ from tensorflow.keras.callbacks import (Callback, CSVLogger, EarlyStopping, Lear
 from tensorflow.keras.regularizers  import L2, L1
 from tensorflow.train import BytesList, FloatList, Int64List
 from tensorflow.train import Example, Features, Feature
-# import tensorflow.compat.v1.keras.backend as K
-# tf.compat.v1.disable_eager_execution()
 
 from mapper import train_dict
 from os import path
@@ -143,4 +141,20 @@ lenet_model = tf.keras.Sequential(
 ])
 
 lenet_model.summary()
+
+loss_function=CategoricalCrossentropy(from_logits=False)
+
+metrics=[CategoricalAccuracy(name="accuracy"),TopKCategoricalAccuracy(k=2,name="top_k_accuracy")]
+lenet_model.compile(
+    optimizer=Adam(learning_rate=CONFIGURATION['LEARNING_RATE']),
+    loss=loss_function,
+    metrics=metrics
+)
+
+history=lenet_model.fit(
+    training_dataset,
+    validation_data=validate_dataset,
+    epochs=CONFIGURATION['N_EPOCHS'],
+    verbose=1
+)
 
