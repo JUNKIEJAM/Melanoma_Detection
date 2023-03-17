@@ -70,7 +70,7 @@ train_dataset=tf.keras.utils.image_dataset_from_directory(
 
 validate_dataset=tf.keras.utils.image_dataset_from_directory(
     val_directory,
-    # labels='inferred',
+    labels='inferred',
     label_mode='categorical',
     class_names=CLASS_NAMES,
     color_mode='rgb',
@@ -93,23 +93,79 @@ for images,labels in train_dataset.take(1):
     plt.show()
     plt.axis("off")
 
-training_dataset=(
-    train_dataset
-    .prefetch(tf.data.AUTOTUNE
-              ))
+#DATASET AUGMENTATION
+### tf.keras.layer augment
+augment_layers = tf.keras.Sequential([
+  RandomRotation(factor = (-0.025, 0.025)),
+  RandomFlip(mode='horizontal',),
+  RandomContrast(factor=0.1),])
 
-VALIDATION_dataset=(
-    train_dataset
-    .prefetch(tf.data.AUTOTUNE
-              ))
+def augment_layer(image, label):
+      return augment_layers(image, training = True), label
 
-resize_rescale_layers=tf.keras.Sequential([
-    Resizing(256,256),
-    Rescaling(1/255)
+def box(lamda):   
+  r_x = tf.cast(tfp.distributions.Uniform(0, CONFIGURATION["IM_SIZE"]).sample(1)[0], dtype = tf.int32)
+  r_y = tf.cast(tfp.distributions.Uniform(0, CONFIGURATION["IM_SIZE"]).sample(1)[0], dtype = tf.int32)
+
+  r_w = tf.cast(CONFIGURATION["IM_SIZE"]*tf.math.sqrt(1-lamda), dtype = tf.int32)
+  r_h = tf.cast(CONFIGURATION["IM_SIZE"]*tf.math.sqrt(1-lamda), dtype = tf.int32)
+
+  r_x = tf.clip_by_value(r_x - r_w//2, 0, CONFIGURATION["IM_SIZE"])
+  r_y = tf.clip_by_value(r_y - r_h//2, 0, CONFIGURATION["IM_SIZE"])
+
+  x_b_r = tf.clip_by_value(r_x + r_w//2, 0, CONFIGURATION["IM_SIZE"])
+  y_b_r = tf.clip_by_value(r_y + r_h//2, 0, CONFIGURATION["IM_SIZE"])
+
+  r_w = x_b_r - r_x
+  if(r_w == 0):
+    r_w  = 1
+
+  r_h = y_b_r - r_y
+  if(r_h == 0):
+    r_h = 1
+
+  return r_y, r_x, r_h, r_w
+
+def cutmix(train_dataset_1, train_dataset_2):
+  (image_1,label_1), (image_2, label_2) = train_dataset_1, train_dataset_2
+
+  lamda = tfp.distributions.Beta(2,2)
+  lamda = lamda.sample(1)[0]
+  
+  r_y, r_x, r_h, r_w = box(lamda)
+  crop_2 = tf.image.crop_to_bounding_box(image_2, r_y, r_x, r_h, r_w)
+  pad_2 = tf.image.pad_to_bounding_box(crop_2, r_y, r_x, CONFIGURATION["IM_SIZE"], CONFIGURATION["IM_SIZE"])
+
+  crop_1 = tf.image.crop_to_bounding_box(image_1, r_y, r_x, r_h, r_w)
+  pad_1 = tf.image.pad_to_bounding_box(crop_1, r_y, r_x, CONFIGURATION["IM_SIZE"], CONFIGURATION["IM_SIZE"])
+
+  image = image_1 - pad_1 + pad_2
+
+  lamda = tf.cast(1- (r_w*r_h)/(CONFIGURATION["IM_SIZE"]*CONFIGURATION["IM_SIZE"]), dtype = tf.float32)
+  label = lamda*tf.cast(label_1, dtype = tf.float32) + (1-lamda)*tf.cast(label_2, dtype = tf.float32)
+
+  return image, label
+
+
+
+training_dataset = (
+    train_dataset
+    .map(augment_layer, num_parallel_calls = tf.data.AUTOTUNE)
+    .prefetch(tf.data.AUTOTUNE)
+)
+
+
+validation_dataset = (
+    validate_dataset
+    .prefetch(tf.data.AUTOTUNE)
+)
+
+resize_rescale_layers = tf.keras.Sequential([
+       Resizing(CONFIGURATION["IM_SIZE"], CONFIGURATION["IM_SIZE"]),
+       Rescaling(1./255),                 
 ])
 
 #DATA MODELLING
-
 lenet_model = tf.keras.Sequential(
     [
     InputLayer(input_shape = (None, None, 3), ),
@@ -154,7 +210,30 @@ lenet_model.compile(
 history=lenet_model.fit(
     training_dataset,
     validation_data=validate_dataset,
-    epochs=CONFIGURATION['N_EPOCHS'],
+    # epochs=CONFIGURATION['N_EPOCHS'],
+    epochs=5,
     verbose=1
 )
+
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Model Loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train_loss','val_loss'])
+plt.show()
+
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model Accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train_accuracy','val_accuracy'])
+plt.show()
+
+
+
+
+
+
 
