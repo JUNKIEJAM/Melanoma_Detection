@@ -198,7 +198,7 @@ lenet_model = tf.keras.Sequential(
 
 lenet_model.summary()
 
-loss_function=CategoricalCrossentropy(from_logits=False)
+loss_function=BinaryCrossentropy(from_logits=False)
 
 metrics=[CategoricalAccuracy(name="accuracy"),TopKCategoricalAccuracy(k=2,name="top_k_accuracy")]
 lenet_model.compile(
@@ -230,6 +230,7 @@ plt.ylabel('accuracy')
 plt.xlabel('epoch')
 plt.legend(['train_accuracy','val_accuracy'])
 plt.show()
+
 
 
 
